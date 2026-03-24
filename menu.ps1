@@ -1,113 +1,125 @@
+Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# --- CẤU HÌNH GIAO DIỆN ---
-$form = New-Object System.Windows.Forms.Form
-$form.Text = "Tho Tools"
-$form.Size = New-Object System.Drawing.Size(500, 350)
-$form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "None" # Xóa viền Windows mặc định
-$form.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30) # Nền tối
+# --- CẤU HÌNH GIAO DIỆN WPF ---
+$wpfCode = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2000/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2000/xaml"
+        Title="Tho Tools" Height="450" Width="600"
+        WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent"
+        BorderBrush="White" BorderThickness="1"
+        Left="200" Top="200">
+    
+    <Grid Background="White">
+        <DockPanel Height="30" VerticalAlignment="Top" Background="#F0F0F0">
+            <Label Content="Tho Tools" FontWeight="Bold" Foreground="#333" VerticalAlignment="Center" Margin="5,0,0,0"/>
+            <Label Content="OK! - Optimal" Foreground="#00CC00" FontWeight="SemiBold" VerticalAlignment="Center" Margin="10,0,0,0"/>
+            <Button Name="BtnClose" Content="X" Width="30" Background="Transparent" BorderBrush="Transparent" Foreground="Red" FontWeight="Bold" HorizontalAlignment="Right" DockPanel.Dock="Right"/>
+        </DockPanel>
 
-# --- TẠO VIỀN TRẮNG ---
-$form.Paint += {
-    param($sender, $e)
-    $rect = $sender.ClientRectangle
-    $rect.Width -= 1
-    $rect.Height -= 1
-    $e.Graphics.DrawRectangle([System.Drawing.Pen]::new([System.Drawing.Color]::White, 2), $rect)
-}
+        <TabControl Margin="0,30,0,0" BorderThickness="0">
+            
+            <TabItem Header="Simple">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="1.5*"/>
+                    </Grid.ColumnDefinitions>
 
-# --- CHO PHÉP KÉO MENU (DRAG FORM) ---
-$mouseDown = $false
-$form.Add_MouseDown({ $global:mouseDown = $true; $global:initialPos = [System.Windows.Forms.Cursor]::Position; $global:formPos = $form.Location })
+                    <GroupBox Header="Game Tweaks" Grid.Column="0" BorderBrush="#DDD" BorderThickness="1">
+                        <StackPanel Margin="10">
+                            <CheckBox Name="ChkFPS" Content="FPS Booster" Margin="0,5"/>
+                            <CheckBox Name="ChkPing" Content="Boost Ping" Margin="0,5"/>
+                            <Button Name="BtnCMD" Content="Open Command" Margin="0,15,0,0" Background="#F5F5F5" Padding="5,2" BorderBrush="#CCC"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Settings Beta" Grid.Column="1" Margin="10,0,0,0" BorderBrush="#DDD" BorderThickness="1">
+                        <StackPanel Margin="10">
+                            <Label Content="DPI Sensitivity:" Margin="0,0,0,5"/>
+                            <Slider Name="SldDPI" Minimum="1" Maximum="3" Value="1" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,10">
+                                <Label Content="Level: "/>
+                                <Label Name="LblDPIValue" Content="1" FontWeight="Bold"/>
+                            </StackPanel>
+                            <CheckBox Name="ChkTweaks" Content="Apply Advanced Tweaks" Margin="0,5"/>
+                            <Button Name="BtnTest" Content="Test Configuration" Margin="0,15,0,0" Background="#4A90E2" Foreground="White" Padding="10,5" BorderBrush="Transparent" FontWeight="Bold"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <Button Name="BtnActivate" Content="KÍCH HOẠT TỐI ƯU" Grid.Row="1" Grid.ColumnSpan="2" Margin="10,210,10,0" Height="40" VerticalAlignment="Top" Background="#4A90E2" Foreground="White" BorderBrush="Transparent" FontWeight="Bold" FontSize="14"/>
+                </Grid>
+            </TabItem>
+            
+            <TabItem Header="Advanced">
+                <Label Content="Advanced settings here..."/>
+            </TabItem>
+            
+            <TabItem Header="Config">
+                <Label Content="Load/Save configs..."/>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>
+"@
+
+# --- KHỞI TẠO VÀ LIÊN KẾT CHỨC NĂNG ---
+$reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::$wpfCode)
+$form = [Windows.Markup.XamlReader]::Load($reader)
+
+# 1. Liên kết các Control
+$btnClose = $form.FindName("BtnClose")
+$chkFPS = $form.FindName("ChkFPS")
+$chkPing = $form.FindName("ChkPing")
+$btnCMD = $form.FindName("BtnCMD")
+$sldDPI = $form.FindName("SldDPI")
+$lblDPIValue = $form.FindName("LblDPIValue")
+$btnActivate = $form.FindName("BtnActivate")
+
+# 2. Xử lý logic di chuyển menu
+$global:dragOn = $false
+$form.Add_MouseLeftButtonDown({
+    $global:dragOn = $true
+    $global:initialPos = $form.PointToScreen([System.Windows.Point]::new(0,0))
+    $global:mousePos = [System.Windows.Input.Mouse]::GetPosition($form)
+    $form.CaptureMouse()
+})
 $form.Add_MouseMove({
-    if ($global:mouseDown) {
-        $delta = [System.Drawing.Point]::Subtract([System.Windows.Forms.Cursor]::Position, $global:initialPos)
-        $form.Location = [System.Drawing.Point]::Add($global:formPos, $delta)
+    if ($global:dragOn) {
+        $currMousePos = [System.Windows.Input.Mouse]::GetPosition($form)
+        $form.Left = ($currMousePos.X - $global:mousePos.X) + $form.Left
+        $form.Top = ($currMousePos.Y - $global:mousePos.Y) + $form.Top
     }
 })
-$form.Add_MouseUp({ $global:mouseDown = $false })
-
-# --- TIÊU ĐỀ ---
-$title = New-Object System.Windows.Forms.Label
-$title.Text = "THO TOOLS"
-$title.ForeColor = "White"
-$title.Font = New-Object System.Drawing.Font("Consolas", 14, [System.Drawing.FontStyle]::Bold)
-$title.Location = New-Object System.Drawing.Point(180, 15)
-$title.AutoSize = $true
-$form.Controls.Add($title)
-
-# --- CỘT TRÁI: CHỨC NĂNG ---
-$labelLeft = New-Object System.Windows.Forms.Label
-$labelLeft.Text = "[ FUNCTIONS ]"
-$labelLeft.ForeColor = "Cyan"
-$labelLeft.Location = New-Object System.Drawing.Point(30, 60)
-$form.Controls.Add($labelLeft)
-
-# Nút FPS Booster
-$btnFPS = New-Object System.Windows.Forms.CheckBox
-$btnFPS.Text = "FPS Booster"
-$btnFPS.ForeColor = "White"
-$btnFPS.Location = New-Object System.Drawing.Point(30, 90)
-$form.Controls.Add($btnFPS)
-
-# Nút Boost Ping (Tối ưu thật)
-$btnPing = New-Object System.Windows.Forms.CheckBox
-$btnPing.Text = "Boost Ping"
-$btnPing.ForeColor = "White"
-$btnPing.Location = New-Object System.Drawing.Point(30, 120)
-$btnPing.Add_Click({
-    if($btnPing.Checked) {
-        # Tối ưu hóa Network cơ bản (An toàn)
-        netsh int tcp set global autotuninglevel=normal
-        netsh int tcp set global chimney=enabled
-    }
+$form.Add_MouseLeftButtonUp({
+    $global:dragOn = $false
+    $form.ReleaseMouseCapture()
 })
-$form.Controls.Add($btnPing)
 
-# Nút Open Command (Mở CMD thật)
-$btnCMD = New-Object System.Windows.Forms.Button
-$btnCMD.Text = "Open Command"
-$btnCMD.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 50)
-$btnCMD.ForeColor = "White"
-$btnCMD.FlatStyle = "Flat"
-$btnCMD.Location = New-Object System.Drawing.Point(30, 160)
-$btnCMD.Add_Click({ Start-Process cmd.exe })
-$form.Controls.Add($btnCMD)
-
-# --- CỘT PHẢI: SETTINGS ---
-$labelRight = New-Object System.Windows.Forms.Label
-$labelRight.Text = "[ SETTINGS ]"
-$labelRight.ForeColor = "Cyan"
-$labelRight.Location = New-Object System.Drawing.Point(280, 60)
-$form.Controls.Add($labelRight)
-
-$labelDpi = New-Object System.Windows.Forms.Label
-$labelDpi.Text = "Dpi Booster (1-3):"
-$labelDpi.ForeColor = "White"
-$labelDpi.Location = New-Object System.Drawing.Point(280, 90)
-$labelDpi.AutoSize = $true
-$form.Controls.Add($labelDpi)
-
-$trackBar = New-Object System.Windows.Forms.TrackBar
-$trackBar.Minimum = 1
-$trackBar.Maximum = 3
-$trackBar.Value = 1
-$trackBar.Location = New-Object System.Drawing.Point(280, 120)
-$trackBar.Width = 150
-$trackBar.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
-$form.Controls.Add($trackBar)
-
-# --- NÚT ĐÓNG (EXIT) ---
-$btnClose = New-Object System.Windows.Forms.Button
-$btnClose.Text = "X"
-$btnClose.Size = New-Object System.Drawing.Size(25, 25)
-$btnClose.Location = New-Object System.Drawing.Point(465, 5)
-$btnClose.FlatStyle = "Flat"
-$btnClose.ForeColor = "Red"
+# 3. Gán chức năng cho các nút
 $btnClose.Add_Click({ $form.Close() })
-$form.Controls.Add($btnClose)
+
+# Boost Ping thật
+$chkPing.Add_Checked({
+    # Tối ưu hóa Network cơ bản (An toàn)
+    netsh int tcp set global autotuninglevel=normal | Out-Null
+    netsh int tcp set global chimney=enabled | Out-Null
+})
+
+# Open CMD thật
+$btnCMD.Add_Click({ Start-Process cmd.exe })
+
+# Cập nhật giá trị hiển thị của Thanh trượt DPI
+$sldDPI.Add_ValueChanged({
+    $lblDPIValue.Content = [Math]::Round($sldDPI.Value).ToString()
+})
+
+# Nút Kích hoạt (có thể thêm logic ở đây)
+$btnActivate.Add_Click({
+    [System.Windows.MessageBox]::Show("Đã áp dụng các tùy chỉnh tối ưu!", "Tho Tools Status")
+})
 
 # Hiển thị Menu
 $form.ShowDialog()
